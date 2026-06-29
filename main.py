@@ -7,7 +7,7 @@ import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Form, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +34,9 @@ def schedule_delete(path: Path, delay: int):
     threading.Timer(delay, lambda p=path: p.unlink(missing_ok=True)).start()
 
 
+COOKIES_FILE = DOWNLOAD_DIR / "cookies.txt"
+
+
 def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
     args = [
         sys.executable, "-m", "yt_dlp",
@@ -42,8 +45,12 @@ def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
         "--add-metadata",
         "--no-write-thumbnail",
         "--no-playlist",
+        "--extractor-args", "youtube:player_client=android",
         "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
     ]
+
+    if COOKIES_FILE.exists():
+        args.extend(["--cookies", str(COOKIES_FILE)])
 
     if mode == "audio":
         args.extend(["-f", "bestaudio/best"])
@@ -170,6 +177,21 @@ def download_all():
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="downloads.zip"'},
     )
+
+
+@app.post("/upload-cookies/")
+async def upload_cookies(file: UploadFile = File(...)):
+    content = await file.read()
+    COOKIES_FILE.write_bytes(content)
+    return JSONResponse({"status": "ok", "message": f"Cookies saved ({len(content)} bytes)"})
+
+
+@app.get("/cookies-status/")
+def cookies_status():
+    if COOKIES_FILE.exists():
+        size = COOKIES_FILE.stat().st_size
+        return {"status": "present", "size_bytes": size}
+    return {"status": "missing"}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

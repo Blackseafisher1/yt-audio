@@ -245,6 +245,17 @@
 
     .zip-btn:hover { filter: brightness(1.15); text-decoration: none; color: #fff; }
 
+    .cookie-area { margin-top: var(--space-4); padding: var(--space-3); background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .cookie-area summary { cursor: pointer; font-size: var(--size-fluid-1); color: var(--color-text-muted); font-weight: 500; }
+    .cookie-area summary:hover { color: var(--color-text); }
+    .cookie-status { font-size: var(--size-fluid-1); margin-top: var(--space-2); }
+    .cookie-ok { color: var(--color-success); }
+    .cookie-missing { color: var(--color-warning); }
+    .cookie-upload { margin-top: var(--space-2); display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+    .cookie-upload input[type=file] { font-size: var(--size-fluid-1); font-family: inherit; }
+    .cookie-upload .btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--size-fluid-1); background: var(--color-bg-hover); border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; color: var(--color-text); }
+    .cookie-upload .btn-sm:hover { border-color: var(--color-accent); }
+
     .p-subtle { font-size: var(--size-fluid-1); color: var(--color-text-muted); margin-bottom: var(--space-3); }
 
     @media (max-width: 640px) {
@@ -294,6 +305,16 @@
 
       <button type="submit" class="btn">Start Download</button>
     </form>
+
+    <details class="cookie-area">
+      <summary>YouTube cookies (only if bot-blocked)</summary>
+      <div class="cookie-status" id="cookieStatus">Checking...</div>
+      <div class="cookie-upload">
+        <input type="file" id="cookieFile" accept=".txt">
+        <button type="button" class="btn-sm" id="uploadCookieBtn">Upload cookies.txt</button>
+      </div>
+      <p class="p-subtle" style="margin-top:var(--space-2)">Export cookies from browser as Netscape format. See <a href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp" target="_blank">yt-dlp guide</a>.</p>
+    </details>
 
     <div id="status" class="status" style="display:none"></div>
     <div class="files" id="files"></div>
@@ -351,6 +372,36 @@
     themeToggle.addEventListener('click', () => {
       const cur = document.documentElement.getAttribute('data-theme');
       setTheme(cur === 'dark' ? 'light' : 'dark');
+    });
+
+    // Cookies
+    async function checkCookies() {
+      const el = document.getElementById('cookieStatus');
+      try {
+        const r = await fetch('/cookies-status/');
+        const d = await r.json();
+        el.innerHTML = d.status === 'present'
+          ? '<span class="cookie-ok">Cookies loaded (' + d.size_bytes + ' bytes)</span>'
+          : '<span class="cookie-missing">No cookies — Android client active (may still fail on some videos)</span>';
+      } catch { el.textContent = 'Could not check'; }
+    }
+    checkCookies();
+
+    document.getElementById('uploadCookieBtn').addEventListener('click', async () => {
+      const input = document.getElementById('cookieFile');
+      if (!input.files.length) { alert('Select a cookies.txt file first'); return; }
+      const fd = new FormData();
+      fd.append('file', input.files[0]);
+      const btn = document.getElementById('uploadCookieBtn');
+      btn.textContent = 'Uploading...';
+      try {
+        const r = await fetch('/upload-cookies/', { method: 'POST', body: fd });
+        const d = await r.json();
+        alert(d.message);
+        checkCookies();
+      } catch (e) { alert('Upload failed: ' + e.message); }
+      btn.textContent = 'Upload cookies.txt';
+      input.value = '';
     });
 
     const form = document.getElementById('form');
