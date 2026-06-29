@@ -35,10 +35,12 @@ def schedule_delete(path: Path, delay: int):
 
 
 COOKIES_FILE = DOWNLOAD_DIR / "cookies.txt"
-DENO_PATH = Path("/root/.deno/bin/deno") if sys.platform == "linux" else None
 
 
 def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
+    use_cookies = COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100
+    client = "web" if use_cookies else "android"
+
     args = [
         sys.executable, "-m", "yt_dlp",
         "--force-ipv4",
@@ -46,15 +48,12 @@ def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
         "--add-metadata",
         "--no-write-thumbnail",
         "--no-playlist",
-        "--extractor-args", "youtube:player_client=tv_embedded;skip=webpage",
+        "--extractor-args", f"youtube:player_client={client};skip=webpage",
         "--no-check-formats",
         "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
     ]
 
-    if DENO_PATH and DENO_PATH.exists():
-        args.extend(["--js-runtimes", f"deno:{DENO_PATH}"])
-
-    if COOKIES_FILE.exists():
+    if use_cookies:
         args.extend(["--cookies", str(COOKIES_FILE)])
 
     if mode == "audio":
