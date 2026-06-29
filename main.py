@@ -45,7 +45,7 @@ def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
         "--add-metadata",
         "--no-write-thumbnail",
         "--no-playlist",
-        "--extractor-args", "youtube:player_client=android",
+        "--extractor-args", "youtube:player_client=android,web;skip=webpage",
         "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
     ]
 
