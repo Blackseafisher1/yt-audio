@@ -35,6 +35,18 @@ def schedule_delete(path: Path, delay: int):
 
 
 COOKIES_FILE = DOWNLOAD_DIR / "cookies.txt"
+WARP_PROXY = "socks5://127.0.0.1:40000"
+
+import socket
+
+
+def warp_available():
+    try:
+        s = socket.create_connection(("127.0.0.1", 40000), timeout=1)
+        s.close()
+        return True
+    except:
+        return False
 
 
 def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
@@ -48,10 +60,16 @@ def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
         "--add-metadata",
         "--no-write-thumbnail",
         "--no-playlist",
+    ]
+
+    if warp_available():
+        args.extend(["--proxy", WARP_PROXY])
+
+    args.extend([
         "--extractor-args", f"youtube:player_client={client};skip=webpage",
         "--no-check-formats",
         "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
-    ]
+    ])
 
     if use_cookies:
         args.extend(["--cookies", str(COOKIES_FILE)])
