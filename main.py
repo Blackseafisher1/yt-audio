@@ -18,7 +18,7 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 tasks: dict = {}
 latest_task_id: str | None = None
-
+ 
 CLEANUP_5MIN = 300
 CLEANUP_30SEC = 30
 
@@ -49,10 +49,7 @@ def warp_available():
         return False
 
 
-def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
-    use_cookies = COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100
-    client = "web" if use_cookies else "android"
-
+def build_args(url_list: list[str], mode: str, quality: str, audio_format: str = "opus") -> list[str]:
     args = [
         sys.executable, "-m", "yt_dlp",
         "--force-ipv4",
@@ -60,22 +57,18 @@ def build_args(url_list: list[str], mode: str, quality: str) -> list[str]:
         "--add-metadata",
         "--no-write-thumbnail",
         "--no-playlist",
+        "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
     ]
 
-    if warp_available():
-        args.extend(["--proxy", WARP_PROXY])
-
-    args.extend([
-        "--extractor-args", f"youtube:player_client={client};skip=webpage",
-        "--no-check-formats",
-        "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
-    ])
-
-    if use_cookies:
+    if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100:
         args.extend(["--cookies", str(COOKIES_FILE)])
 
     if mode == "audio":
-        args.extend(["-f", "bestaudio/best"])
+        args.extend(["-f", "bestaudio"])
+        if audio_format == "opus":
+            args.extend(["--remux-video", "opus"])
+        elif audio_format == "m4a":
+            args.extend(["-f", "bestaudio[ext=m4a]/bestaudio", "--remux-video", "m4a"])
     elif mode == "video":
         if quality and quality != "best":
             args.extend(["-f", f"bestvideo[height<={quality}]+bestaudio/bestvideo[height<={quality}]/best"])
@@ -96,11 +89,16 @@ def collect_files():
     )
 
 
-def download_task(task_id: str, url_list: list[str], mode: str, quality: str):
+def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus"):
     tasks[task_id] = {"status": "running", "mode": mode, "quality": quality}
     try:
-        args = build_args(url_list, mode, quality)
-        result = subprocess.run(args, capture_output=True, text=True, timeout=600)
+        # remove old task files immediately
+        for f in DOWNLOAD_DIR.iterdir():
+            if f.is_file():
+                schedule_delete(f, 30)
+        args = build_args(url_list, mode, quality, audio_format)
+        # Hier die Zeit die es dauern darf angeben bei  in Sekunden, bei kurzen werten bricht er bei langen downloads Ab
+        result = subprocess.run(args, capture_output=True, text=True, timeout=5000)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or f"Exit code {result.returncode}")
 
@@ -109,7 +107,6 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str):
         global latest_task_id
         latest_task_id = task_id
 
-        # schedule all files for deletion after 5min
         for f in DOWNLOAD_DIR.iterdir():
             if f.is_file():
                 schedule_delete(f, CLEANUP_5MIN)
@@ -123,6 +120,7 @@ async def start_download(
     urls: str = Form(...),
     mode: str = Form("audio"),
     quality: str = Form("best"),
+    audio_format: str = Form("opus"),
     background_tasks: BackgroundTasks = None,
 ):
     url_list = [u.strip() for u in urls.replace("\n", ",").split(",") if u.strip()]
@@ -135,7 +133,7 @@ async def start_download(
 
     task_id = str(uuid.uuid4())[:8]
     tasks[task_id] = {"status": "queued", "mode": mode, "quality": quality}
-    background_tasks.add_task(download_task, task_id, url_list, mode, quality)
+    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format)
 
     return JSONResponse({
         "status": "queued",
@@ -154,9 +152,8 @@ def get_task(task_id: str):
 
 @app.get("/files/")
 def list_files():
-    task = tasks.get(latest_task_id) if latest_task_id else None
-    files = task.get("files", []) if task and task.get("status") == "done" else []
-    return {"files": files, "task_id": latest_task_id}
+    files = collect_files()
+    return {"files": files}
 
 
 @app.get("/download-file/{filename}")
@@ -174,16 +171,30 @@ def download_file(filename: str):
     )
 
 
+@app.delete("/delete-file/{filename}")
+def delete_file(filename: str):
+    file_path = DOWNLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    file_path.unlink()
+    return JSONResponse({"status": "deleted", "file": filename})
+
+
+@app.delete("/clear-all/")
+def clear_all():
+    count = 0
+    for f in DOWNLOAD_DIR.iterdir():
+        if f.is_file():
+            f.unlink()
+            count += 1
+    return JSONResponse({"status": "cleared", "count": count})
+
+
 @app.get("/download-all/")
 def download_all():
-    task = tasks.get(latest_task_id) if latest_task_id else None
-    if not task or task.get("status") != "done" or not task.get("files"):
-        raise HTTPException(status_code=404, detail="No files to download")
-
-    files = [DOWNLOAD_DIR / f["name"] for f in task["files"]]
-    files = [f for f in files if f.exists()]
+    files = sorted([f for f in DOWNLOAD_DIR.iterdir() if f.is_file()], key=lambda f: f.name)
     if not files:
-        raise HTTPException(status_code=404, detail="No files found on disk")
+        raise HTTPException(status_code=404, detail="No files to download")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

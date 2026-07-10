@@ -6,6 +6,7 @@
   <title>YouTube Batch Downloader</title>
   <style>
     *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
 
     :root {
       --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
@@ -228,7 +229,7 @@
 
     .files .size { color: var(--color-text-muted); font-size: var(--size-fluid-1); }
 
-    .zip-btn {
+    .zip-btn, a.zip-btn {
       display: inline-flex;
       align-items: center;
       margin-top: var(--space-3);
@@ -244,6 +245,8 @@
     }
 
     .zip-btn:hover { filter: brightness(1.15); text-decoration: none; color: #fff; }
+
+    .del-btn { font-size: 1rem; padding: 2px 8px; line-height: 1; }
 
     .cookie-area { margin-top: var(--space-4); padding: var(--space-3); background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
     .cookie-area summary { cursor: pointer; font-size: var(--size-fluid-1); color: var(--color-text-muted); font-weight: 500; }
@@ -285,13 +288,22 @@
       <textarea id="urls" rows="5" placeholder="https://youtube.com/watch?v=...&#10;https://youtube.com/playlist?list=..."></textarea>
 
       <div class="opt-row">
-        <div class="radio-group">
+        <div class="radio-group" id="modeGroup">
           <label><input type="radio" name="mode" value="audio" checked> Audio</label>
           <label><input type="radio" name="mode" value="video"> Video</label>
         </div>
 
-        <div class="quality-group">
-          <label for="quality">Quality</label>
+        <div class="quality-group" id="audioFormatGroup">
+          <label for="audioFormat">Audio format</label>
+          <select id="audioFormat">
+            <option value="opus">opus</option>
+            <option value="webm">webm (Opus)</option>
+            <option value="m4a">m4a (AAC)</option>
+          </select>
+        </div>
+
+        <div class="quality-group" id="videoQualityGroup" hidden>
+          <label for="quality">Video quality</label>
           <select id="quality">
             <option value="best">Best</option>
             <option value="2160">4K</option>
@@ -306,14 +318,11 @@
       <button type="submit" class="btn">Start Download</button>
     </form>
 
-    <details class="cookie-area">
-      <summary>YouTube cookies (only if bot-blocked)</summary>
-      <div class="cookie-status" id="cookieStatus">Checking...</div>
-      <div class="cookie-upload">
-        <input type="file" id="cookieFile" accept=".txt">
-        <button type="button" class="btn-sm" id="uploadCookieBtn">Upload cookies.txt</button>
-      </div>
-      <p class="p-subtle" style="margin-top:var(--space-2)">Export cookies from browser as Netscape format. See <a href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp" target="_blank">yt-dlp guide</a>.</p>
+    <details class="cookie-area" id="settingsArea">
+      <summary>Settings</summary>
+      <label style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);cursor:pointer;font-weight:400">
+        <input type="checkbox" id="clearOnSubmit"> Clear old files on new download
+      </label>
     </details>
 
     <div id="status" class="status" style="display:none"></div>
@@ -374,35 +383,22 @@
       setTheme(cur === 'dark' ? 'light' : 'dark');
     });
 
-    // Cookies
-    async function checkCookies() {
-      const el = document.getElementById('cookieStatus');
-      try {
-        const r = await fetch('/cookies-status/');
-        const d = await r.json();
-        el.innerHTML = d.status === 'present'
-          ? '<span class="cookie-ok">Cookies loaded (' + d.size_bytes + ' bytes)</span>'
-          : '<span class="cookie-missing">No cookies — Android client active (may still fail on some videos)</span>';
-      } catch { el.textContent = 'Could not check'; }
+    // Mode toggle
+    const modeGroup = document.getElementById('modeGroup');
+    const audioFmtGroup = document.getElementById('audioFormatGroup');
+    const videoQGroup = document.getElementById('videoQualityGroup');
+    function toggleOpts() {
+      const video = modeGroup.querySelector('input[value=video]').checked;
+      audioFmtGroup.hidden = video;
+      videoQGroup.hidden = !video;
     }
-    checkCookies();
+    modeGroup.addEventListener('change', toggleOpts);
+    toggleOpts();
 
-    document.getElementById('uploadCookieBtn').addEventListener('click', async () => {
-      const input = document.getElementById('cookieFile');
-      if (!input.files.length) { alert('Select a cookies.txt file first'); return; }
-      const fd = new FormData();
-      fd.append('file', input.files[0]);
-      const btn = document.getElementById('uploadCookieBtn');
-      btn.textContent = 'Uploading...';
-      try {
-        const r = await fetch('/upload-cookies/', { method: 'POST', body: fd });
-        const d = await r.json();
-        alert(d.message);
-        checkCookies();
-      } catch (e) { alert('Upload failed: ' + e.message); }
-      btn.textContent = 'Upload cookies.txt';
-      input.value = '';
-    });
+    const clearOnSubmit = document.getElementById('clearOnSubmit');
+    const savedClear = localStorage.getItem('ytdl_clearOnSubmit');
+    if (savedClear === 'true') clearOnSubmit.checked = true;
+    clearOnSubmit.addEventListener('change', () => localStorage.setItem('ytdl_clearOnSubmit', clearOnSubmit.checked));
 
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
@@ -415,15 +411,27 @@
       btn.textContent = 'Downloading...';
 
       const urls = document.getElementById('urls').value.trim();
+      if (!urls) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Enter at least one URL';
+        btn.disabled = false;
+        btn.textContent = 'Start Download';
+        return;
+      }
       const fd = new FormData();
       fd.append('urls', urls);
       fd.append('mode', document.querySelector('[name="mode"]:checked').value);
       fd.append('quality', document.getElementById('quality').value);
+      fd.append('audio_format', document.getElementById('audioFormat').value);
 
       statusEl.style.display = 'block';
       statusEl.className = 'status';
       statusEl.textContent = 'Starting...';
       filesEl.innerHTML = '<p class="p-subtle">Downloading...</p>';
+
+      if (clearOnSubmit.checked) {
+        await fetch('/clear-all/', { method: 'DELETE' }).catch(() => {});
+      }
 
       try {
         const res = await fetch('/download/', { method: 'POST', body: fd });
@@ -466,10 +474,23 @@
 
     function showFiles(files) {
       if (!files.length) { filesEl.innerHTML = '<p class="p-subtle">No files.</p>'; return; }
-      filesEl.innerHTML = '<h3>Downloaded</h3><ul>' +
-        files.map(f => `<li><a href="/download-file/${encodeURIComponent(f.name)}">${f.name}</a> <span class="size">${f.size_mb} MB</span></li>`).join('') +
+      filesEl.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2)"><h3 style="margin:0">Downloaded</h3><button class="hist-toggle" id="clearAllBtn">Clear All</button></div><ul>' +
+        files.map(f => `<li style="display:flex;justify-content:space-between;align-items:center"><span><a href="/download-file/${encodeURIComponent(f.name)}">${f.name}</a> <span class="size">${f.size_mb} MB</span></span><button class="hist-toggle del-btn" data-file="${encodeURIComponent(f.name)}" style="color:var(--color-error);font-weight:700">✕</button></li>`).join('') +
         '</ul>' +
         '<a href="/download-all/" class="zip-btn">Download All as ZIP</a>';
+
+      document.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
+        const name = decodeURIComponent(b.dataset.file);
+        b.disabled = true;
+        await fetch('/delete-file/' + encodeURIComponent(name), { method: 'DELETE' });
+        b.closest('li').remove();
+        if (!filesEl.querySelector('li')) filesEl.innerHTML = '<p class="p-subtle">No files.</p>';
+      }));
+
+      document.getElementById('clearAllBtn').addEventListener('click', async () => {
+        await fetch('/clear-all/', { method: 'DELETE' });
+        filesEl.innerHTML = '<p class="p-subtle">No files.</p>';
+      });
     }
 
     async function loadLatestFiles() {
@@ -479,6 +500,22 @@
         showFiles(data.files || []);
       } catch {}
     }
+
+
+     const modeContainer = document.getElementById('modeGroup');
+     const qDropdown = document.querySelector('.quality-group');
+
+modeContainer.addEventListener('change', () => {
+  qDropdown.hidden = !modeContainer.querySelector('input[value=video]').checked;
+});
+
+
+
+
+
+        
+
+     
 
     loadLatestFiles();
   </script>
