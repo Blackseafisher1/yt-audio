@@ -49,7 +49,7 @@ def warp_available():
         return False
 
 
-def build_args(url_list: list[str], mode: str, quality: str, audio_format: str = "opus") -> list[str]:
+def build_args(url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False) -> list[str]:
     args = [
         sys.executable, "-m", "yt_dlp",
         "--force-ipv4",
@@ -80,29 +80,38 @@ def build_args(url_list: list[str], mode: str, quality: str, audio_format: str =
 
 
 def collect_files():
-    return sorted(
-        [
-            {"name": f.name, "size_mb": round(f.stat().st_size / (1024 * 1024), 2)}
-            for f in DOWNLOAD_DIR.iterdir() if f.is_file()
-        ],
-        key=lambda x: x["name"],
-    )
+    files = []
+    for f in DOWNLOAD_DIR.iterdir():
+        if f.is_file() and f.name != "cookies.txt":
+            files.append({
+                "name": f.name,
+                "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
+                "mtime": f.stat().st_mtime,
+            })
+    return sorted(files, key=lambda x: x["mtime"])
 
 
-def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus"):
+def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False):
     tasks[task_id] = {"status": "running", "mode": mode, "quality": quality}
     try:
         # remove old task files immediately
         for f in DOWNLOAD_DIR.iterdir():
             if f.is_file():
                 schedule_delete(f, 30)
-        args = build_args(url_list, mode, quality, audio_format)
+        args = build_args(url_list, mode, quality, audio_format, number_files)
         # Hier die Zeit die es dauern darf angeben bei  in Sekunden, bei kurzen werten bricht er bei langen downloads Ab
         result = subprocess.run(args, capture_output=True, text=True, timeout=5000)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or f"Exit code {result.returncode}")
 
         files = collect_files()
+        if number_files:
+            for i, f in enumerate(sorted(DOWNLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime), 1):
+                if f.is_file():
+                    new = DOWNLOAD_DIR / f"{i}. {f.stem}{f.suffix}"
+                    if new != f:
+                        f.rename(new)
+            files = collect_files()
         tasks[task_id] = {"status": "done", "mode": mode, "quality": quality, "files": files}
         global latest_task_id
         latest_task_id = task_id
@@ -121,6 +130,7 @@ async def start_download(
     mode: str = Form("audio"),
     quality: str = Form("best"),
     audio_format: str = Form("opus"),
+    number_files: str = Form("false"),
     background_tasks: BackgroundTasks = None,
 ):
     url_list = [u.strip() for u in urls.replace("\n", ",").split(",") if u.strip()]
@@ -133,7 +143,7 @@ async def start_download(
 
     task_id = str(uuid.uuid4())[:8]
     tasks[task_id] = {"status": "queued", "mode": mode, "quality": quality}
-    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format)
+    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format, number_files == "true")
 
     return JSONResponse({
         "status": "queued",
@@ -192,9 +202,13 @@ def clear_all():
 
 @app.get("/download-all/")
 def download_all():
-    files = sorted([f for f in DOWNLOAD_DIR.iterdir() if f.is_file()], key=lambda f: f.name)
+    files = sorted([f for f in DOWNLOAD_DIR.iterdir() if f.is_file()], key=lambda f: f.stat().st_mtime)
     if not files:
         raise HTTPException(status_code=404, detail="No files to download")
+
+    first = files[0].stem
+    safe = first.encode("ascii", "replace").decode("ascii").replace("?", "_")[:60]
+    zip_name = f"{safe}....zip"
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -208,7 +222,7 @@ def download_all():
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="downloads.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
     )
 
 

@@ -320,9 +320,14 @@
 
     <details class="cookie-area" id="settingsArea">
       <summary>Settings</summary>
-      <label style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);cursor:pointer;font-weight:400">
+      <div style="display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-2)">
+      <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
         <input type="checkbox" id="clearOnSubmit"> Clear old files on new download
       </label>
+      <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
+        <input type="checkbox" id="numberFiles"> Number files (1. Title, 2. Title...)
+      </label>
+      </div>
     </details>
 
     <div id="status" class="status" style="display:none"></div>
@@ -400,6 +405,11 @@
     if (savedClear === 'true') clearOnSubmit.checked = true;
     clearOnSubmit.addEventListener('change', () => localStorage.setItem('ytdl_clearOnSubmit', clearOnSubmit.checked));
 
+    const numberFiles = document.getElementById('numberFiles');
+    const savedNum = localStorage.getItem('ytdl_numberFiles');
+    if (savedNum === 'true') numberFiles.checked = true;
+    numberFiles.addEventListener('change', () => localStorage.setItem('ytdl_numberFiles', numberFiles.checked));
+
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
     const filesEl = document.getElementById('files');
@@ -423,6 +433,7 @@
       fd.append('mode', document.querySelector('[name="mode"]:checked').value);
       fd.append('quality', document.getElementById('quality').value);
       fd.append('audio_format', document.getElementById('audioFormat').value);
+      fd.append('number_files', numberFiles.checked);
 
       statusEl.style.display = 'block';
       statusEl.className = 'status';
