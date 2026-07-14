@@ -2,6 +2,9 @@
 
 FastAPI + yt-dlp web UI for downloading YouTube audio/video in batch. No re-encoding.
 
+> ONLY USE FOR NON-COPYRIGHT MATERIAL OR SELF-OWNED MATERIAL !!!
+
+
 ## Dependencies
 
 - **Python** ≥ 3.10
