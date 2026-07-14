@@ -316,6 +316,7 @@
       </div>
 
       <button type="submit" class="btn">Start Download</button>
+       <button type="button" onclick="location.reload()" class="btn">Refresh List</button>
     </form>
 
     <details class="cookie-area" id="settingsArea">
@@ -325,7 +326,20 @@
         <input type="checkbox" id="clearOnSubmit"> Clear old files on new download
       </label>
       <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
-        <input type="checkbox" id="numberFiles"> Number files (1. Title, 2. Title...)
+        <input type="checkbox" id="numberFiles"> Number files
+      </label>
+      <div id="numOpts" style="display:flex;flex-direction:column;gap:var(--space-2);margin-left:var(--space-5)">
+      <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
+        <input type="checkbox" id="prefixExcl"> Prepend "!" (for sort order)
+      </label>
+      <label style="display:flex;align-items:center;gap:var(--space-2);font-weight:400">
+        <span>Style:</span>
+        <select id="numberStyle">
+          <option value="numeric">1. 2. 3.</option>
+          <option value="alpha">a b c</option>
+        </select>
+      </label>
+      </div>
       </label>
       </div>
     </details>
@@ -406,9 +420,24 @@
     clearOnSubmit.addEventListener('change', () => localStorage.setItem('ytdl_clearOnSubmit', clearOnSubmit.checked));
 
     const numberFiles = document.getElementById('numberFiles');
+    const numOpts = document.getElementById('numOpts');
     const savedNum = localStorage.getItem('ytdl_numberFiles');
     if (savedNum === 'true') numberFiles.checked = true;
-    numberFiles.addEventListener('change', () => localStorage.setItem('ytdl_numberFiles', numberFiles.checked));
+    numberFiles.addEventListener('change', () => {
+      localStorage.setItem('ytdl_numberFiles', numberFiles.checked);
+      numOpts.hidden = !numberFiles.checked;
+    });
+    numOpts.hidden = !numberFiles.checked;
+
+    const prefixExcl = document.getElementById('prefixExcl');
+    const savedPref = localStorage.getItem('ytdl_prefixExcl');
+    if (savedPref === 'true') prefixExcl.checked = true;
+    prefixExcl.addEventListener('change', () => localStorage.setItem('ytdl_prefixExcl', prefixExcl.checked));
+
+    const numberStyle = document.getElementById('numberStyle');
+    const savedStyle = localStorage.getItem('ytdl_numberStyle');
+    if (savedStyle) numberStyle.value = savedStyle;
+    numberStyle.addEventListener('change', () => localStorage.setItem('ytdl_numberStyle', numberStyle.value));
 
     const form = document.getElementById('form');
     const statusEl = document.getElementById('status');
@@ -434,6 +463,8 @@
       fd.append('quality', document.getElementById('quality').value);
       fd.append('audio_format', document.getElementById('audioFormat').value);
       fd.append('number_files', numberFiles.checked);
+      fd.append('prefix_exclamation', prefixExcl.checked);
+      fd.append('number_style', numberStyle.value);
 
       statusEl.style.display = 'block';
       statusEl.className = 'status';
@@ -476,6 +507,9 @@
             break;
           } else {
             statusEl.textContent = 'Downloading... ' + (i + 1) + 's';
+            if (t.total && t.done != null) {
+              statusEl.textContent += ' (' + t.done + '/' + t.total + ')';
+            }
           }
         } catch {}
       }

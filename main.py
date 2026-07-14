@@ -1,4 +1,5 @@
 import io
+import re
 import subprocess
 import sys
 import threading
@@ -19,14 +20,16 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 tasks: dict = {}
 latest_task_id: str | None = None
  
-CLEANUP_5MIN = 300
+ 
+CLEANUP_30MIN = 300 * 5
+CLEANUP_5MIN  = 300
 CLEANUP_30SEC = 30
 
 
 def clean_old_files():
     now = time.time()
     for f in DOWNLOAD_DIR.iterdir():
-        if f.is_file() and now - f.stat().st_mtime > CLEANUP_5MIN:
+        if f.is_file() and now - f.stat().st_mtime > CLEANUP_30MIN:
             f.unlink()
 
 
@@ -91,24 +94,31 @@ def collect_files():
     return sorted(files, key=lambda x: x["mtime"])
 
 
-def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False):
-    tasks[task_id] = {"status": "running", "mode": mode, "quality": quality}
+def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False, prefix_exclamation: bool = False, number_style: str = "numeric"):
+    tasks[task_id] = {"status": "running", "mode": mode, "quality": quality, "total": len(url_list), "done": 0}
     try:
-        # remove old task files immediately
         for f in DOWNLOAD_DIR.iterdir():
             if f.is_file():
                 schedule_delete(f, 30)
         args = build_args(url_list, mode, quality, audio_format, number_files)
-        # Hier die Zeit die es dauern darf angeben bei  in Sekunden, bei kurzen werten bricht er bei langen downloads Ab
-        result = subprocess.run(args, capture_output=True, text=True, timeout=5000)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or f"Exit code {result.returncode}")
+
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in process.stdout or []:
+            m = re.search(r"Downloading (?:item|video) (\d+) of (\d+)", line)
+            if m:
+                tasks[task_id].update({"done": int(m.group(1)), "total": int(m.group(2))})
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"Exit code {process.returncode}")
 
         files = collect_files()
         if number_files:
+            import string as _str
             for i, f in enumerate(sorted(DOWNLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime), 1):
                 if f.is_file():
-                    new = DOWNLOAD_DIR / f"{i}. {f.stem}{f.suffix}"
+                    prefix = "!" if prefix_exclamation else ""
+                    idx = f"{i}." if number_style == "numeric" else f"{_str.ascii_lowercase[i-1]}"
+                    new = DOWNLOAD_DIR / f"{prefix}{idx} {f.stem}{f.suffix}"
                     if new != f:
                         f.rename(new)
             files = collect_files()
@@ -131,6 +141,8 @@ async def start_download(
     quality: str = Form("best"),
     audio_format: str = Form("opus"),
     number_files: str = Form("false"),
+    prefix_exclamation: str = Form("false"),
+    number_style: str = Form("numeric"),
     background_tasks: BackgroundTasks = None,
 ):
     url_list = [u.strip() for u in urls.replace("\n", ",").split(",") if u.strip()]
@@ -143,7 +155,7 @@ async def start_download(
 
     task_id = str(uuid.uuid4())[:8]
     tasks[task_id] = {"status": "queued", "mode": mode, "quality": quality}
-    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format, number_files == "true")
+    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format, number_files == "true", prefix_exclamation == "true", number_style)
 
     return JSONResponse({
         "status": "queued",
