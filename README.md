@@ -2,7 +2,7 @@
 
 FastAPI + yt-dlp web UI for downloading YouTube audio/video in batch. No re-encoding.
 
-> ONLY USE FOR NON-COPYRIGHT MATERIAL OR SELF-OWNED MATERIAL !!!
+> ONLY USE FOR NON-COPYRIGHT MATERIAL OR SELF-OWNED MATERIAL !!! 
 
 
 ## Dependencies
@@ -119,3 +119,13 @@ nohup python run.py &
 - Audio is never re-encoded. `bestaudio` picks YouTube's native stream.
 - iPhone: use web UI only. No native iOS support.
 - For datacenter IPs (DigitalOcean, AWS): YouTube may block. Use Cloudflare Tunnel or residential proxy.
+
+## Legal / Disclaimer
+
+This tool is provided **"as is"**, without warranty of any kind. The author(s) assume **no liability** for any misuse, damages, or legal consequences arising from its use.
+
+**You may only use this tool for:**
+- Material you own the rights to
+- Material that is **copyfree**, **copyleft**, or otherwise **freely licensed** (e.g. Creative Commons, public domain)
+
+**You may NOT use this tool to download copyrighted material** without explicit permission from the rights holder. It is your responsibility to comply with applicable laws (e.g. YouTube's Terms of Service, copyright law in your jurisdiction).
