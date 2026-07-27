@@ -67,11 +67,12 @@ def build_args(url_list: list[str], mode: str, quality: str, audio_format: str =
         args.extend(["--cookies", str(COOKIES_FILE)])
 
     if mode == "audio":
-        args.extend(["-f", "bestaudio"])
         if audio_format == "opus":
-            args.extend(["--remux-video", "opus"])
+            args.extend(["-f", "bestaudio[ext=webm]/bestaudio", "--remux-video", "opus"])
         elif audio_format == "m4a":
             args.extend(["-f", "bestaudio[ext=m4a]/bestaudio", "--remux-video", "m4a"])
+        else:
+            args.extend(["-f", "bestaudio"])
     elif mode == "video":
         if quality and quality != "best":
             args.extend(["-f", f"bestvideo[height<={quality}]+bestaudio/bestvideo[height<={quality}]/best"])
@@ -108,10 +109,14 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
             if m:
                 tasks[task_id].update({"done": int(m.group(1)), "total": int(m.group(2))})
         process.wait()
-        if process.returncode != 0:
+        if process.returncode >= 2:
             raise RuntimeError(f"Exit code {process.returncode}")
 
-        files = collect_files()
+        # remove 0-byte files (failed remux)
+        for f in DOWNLOAD_DIR.iterdir():
+            if f.is_file() and f.stat().st_size == 0:
+                f.unlink()
+
         if number_files:
             import string as _str
             for i, f in enumerate(sorted(DOWNLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime), 1):
@@ -121,7 +126,7 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
                     new = DOWNLOAD_DIR / f"{prefix}{idx} {f.stem}{f.suffix}"
                     if new != f:
                         f.rename(new)
-            files = collect_files()
+        files = collect_files()
         tasks[task_id] = {"status": "done", "mode": mode, "quality": quality, "files": files}
         global latest_task_id
         latest_task_id = task_id
