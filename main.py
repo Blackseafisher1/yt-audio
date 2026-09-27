@@ -27,6 +27,7 @@ def schedule_delete(path: Path, delay: int):
 
 
 COOKIES_FILE = DOWNLOAD_DIR / "cookies.txt"
+THUMBNAIL_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"}
 WARP_PROXY = "socks5://127.0.0.1:40000"
 
 import socket
@@ -91,6 +92,12 @@ def collect_files():
     return sorted(files, key=lambda x: x["mtime"])
 
 
+def remove_thumbnail_sidecars():
+    for path in DOWNLOAD_DIR.iterdir():
+        if path.is_file() and path.suffix.lower() in THUMBNAIL_SUFFIXES:
+            path.unlink(missing_ok=True)
+
+
 def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", embed_thumbnail: bool = True, number_files: bool = False, prefix_exclamation: bool = False, number_style: str = "numeric", cleanup_seconds: int = 0):
     tasks[task_id] = {"status": "running", "mode": mode, "quality": quality, "total": len(url_list), "done": 0}
     try:
@@ -102,6 +109,7 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
             if m:
                 tasks[task_id].update({"done": int(m.group(1)), "total": int(m.group(2))})
         process.wait()
+        remove_thumbnail_sidecars()
         if process.returncode >= 2:
             raise RuntimeError(f"Exit code {process.returncode}")
 
