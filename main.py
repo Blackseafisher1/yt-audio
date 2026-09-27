@@ -52,12 +52,7 @@ def build_args(url_list: list[str], mode: str, quality: str, audio_format: str =
     ]
 
     if embed_thumbnail and mode == "audio":
-        args.extend([
-            "--write-thumbnail",
-            "--embed-thumbnail",
-            "--convert-thumbnails", "jpg",
-            "--ppa", "ThumbnailsConvertor+ffmpeg_o:-vf crop=min(iw\\,ih):min(iw\\,ih)",
-        ])
+        args.append("--write-thumbnail")
 
     if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100:
         args.extend(["--cookies", str(COOKIES_FILE)])
@@ -103,6 +98,40 @@ def remove_thumbnail_sidecars():
             path.unlink(missing_ok=True)
 
 
+def crop_and_embed_m4a_covers():
+    from mutagen.mp4 import MP4, MP4Cover
+
+    image_paths = [
+        path for path in DOWNLOAD_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in THUMBNAIL_SUFFIXES
+    ]
+    media_paths = {
+        path.stem: path for path in DOWNLOAD_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() == ".m4a"
+    }
+
+    for image_path in image_paths:
+        media_path = media_paths.get(image_path.stem)
+        if media_path is None:
+            continue
+
+        cropped_path = image_path.with_name(f"{image_path.stem}.square.jpg")
+        crop = subprocess.run([
+            "ffmpeg", "-y", "-i", str(image_path),
+            "-vf", "crop=min(iw\\,ih):min(iw\\,ih)",
+            "-q:v", "2", str(cropped_path),
+        ], capture_output=True, text=True)
+        if crop.returncode != 0:
+            raise RuntimeError(f"Could not crop cover for {media_path.name}: {crop.stderr[-500:]}")
+
+        metadata = MP4(str(media_path))
+        if metadata.tags is None:
+            metadata.add_tags()
+        metadata.tags["covr"] = [MP4Cover(cropped_path.read_bytes(), imageformat=MP4Cover.FORMAT_JPEG)]
+        metadata.save()
+        cropped_path.unlink(missing_ok=True)
+
+
 def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", embed_thumbnail: bool = True, number_files: bool = False, prefix_exclamation: bool = False, number_style: str = "numeric", cleanup_seconds: int = 0):
     tasks[task_id] = {"status": "running", "mode": mode, "quality": quality, "total": len(url_list), "done": 0}
     try:
@@ -114,6 +143,8 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
             if m:
                 tasks[task_id].update({"done": int(m.group(1)), "total": int(m.group(2))})
         process.wait()
+        if process.returncode < 2 and embed_thumbnail and mode == "audio":
+            crop_and_embed_m4a_covers()
         remove_thumbnail_sidecars()
         if process.returncode >= 2:
             raise RuntimeError(f"Exit code {process.returncode}")
