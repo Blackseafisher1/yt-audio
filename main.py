@@ -52,7 +52,7 @@ def build_args(url_list: list[str], mode: str, quality: str, audio_format: str =
     ]
 
     if embed_thumbnail and mode == "audio":
-        args.extend(["--embed-thumbnail", "--convert-thumbnails", "jpg"])
+        args.extend(["--write-thumbnail", "--embed-thumbnail", "--convert-thumbnails", "jpg"])
 
     if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100:
         args.extend(["--cookies", str(COOKIES_FILE)])
