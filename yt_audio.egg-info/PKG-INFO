@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: yt-audio
+Version: 1.0.0
+Summary: YouTube Audio/Video Batch Downloader
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.27
+Requires-Dist: yt-dlp>=2024

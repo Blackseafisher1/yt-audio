@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+yt_audio.egg-info/PKG-INFO
+yt_audio.egg-info/SOURCES.txt
+yt_audio.egg-info/dependency_links.txt
+yt_audio.egg-info/entry_points.txt
+yt_audio.egg-info/requires.txt
+yt_audio.egg-info/top_level.txt
