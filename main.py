@@ -21,20 +21,9 @@ tasks: dict = {}
 latest_task_id: str | None = None
  
  
-CLEANUP_30MIN = 300 * 5
-CLEANUP_5MIN  = 300
-CLEANUP_30SEC = 30
-
-
-def clean_old_files():
-    now = time.time()
-    for f in DOWNLOAD_DIR.iterdir():
-        if f.is_file() and now - f.stat().st_mtime > CLEANUP_30MIN:
-            f.unlink()
-
-
 def schedule_delete(path: Path, delay: int):
-    threading.Timer(delay, lambda p=path: p.unlink(missing_ok=True)).start()
+    if delay > 0:
+        threading.Timer(delay, lambda p=path: p.unlink(missing_ok=True)).start()
 
 
 COOKIES_FILE = DOWNLOAD_DIR / "cookies.txt"
@@ -52,16 +41,17 @@ def warp_available():
         return False
 
 
-def build_args(url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False) -> list[str]:
+def build_args(url_list: list[str], mode: str, quality: str, audio_format: str = "opus", embed_thumbnail: bool = True) -> list[str]:
     args = [
         sys.executable, "-m", "yt_dlp",
         "--force-ipv4",
         "--ignore-errors",
         "--add-metadata",
-        "--no-write-thumbnail",
-        "--no-playlist",
         "-o", f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
     ]
+
+    if embed_thumbnail and mode == "audio":
+        args.extend(["--embed-thumbnail", "--convert-thumbnails", "jpg"])
 
     if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 100:
         args.extend(["--cookies", str(COOKIES_FILE)])
@@ -71,6 +61,12 @@ def build_args(url_list: list[str], mode: str, quality: str, audio_format: str =
             args.extend(["-f", "bestaudio[ext=webm]/bestaudio", "--remux-video", "opus"])
         elif audio_format == "m4a":
             args.extend(["-f", "bestaudio[ext=m4a]/bestaudio", "--remux-video", "m4a"])
+        elif audio_format == "webm":
+            args.extend(["-f", "bestaudio[ext=webm]/bestaudio", "--remux-video", "webm"])
+        elif audio_format == "ogg":
+            args.extend(["-f", "bestaudio[acodec=opus]/bestaudio", "--remux-video", "ogg"])
+        elif audio_format in ("mp3", "flac", "wav", "aac"):
+            args.extend(["-x", "--audio-format", audio_format, "--audio-quality", "0"])
         else:
             args.extend(["-f", "bestaudio"])
     elif mode == "video":
@@ -95,13 +91,10 @@ def collect_files():
     return sorted(files, key=lambda x: x["mtime"])
 
 
-def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", number_files: bool = False, prefix_exclamation: bool = False, number_style: str = "numeric"):
+def download_task(task_id: str, url_list: list[str], mode: str, quality: str, audio_format: str = "opus", embed_thumbnail: bool = True, number_files: bool = False, prefix_exclamation: bool = False, number_style: str = "numeric", cleanup_seconds: int = 0):
     tasks[task_id] = {"status": "running", "mode": mode, "quality": quality, "total": len(url_list), "done": 0}
     try:
-        for f in DOWNLOAD_DIR.iterdir():
-            if f.is_file():
-                schedule_delete(f, 30)
-        args = build_args(url_list, mode, quality, audio_format, number_files)
+        args = build_args(url_list, mode, quality, audio_format, embed_thumbnail)
 
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in process.stdout or []:
@@ -120,9 +113,17 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
         if number_files:
             import string as _str
             for i, f in enumerate(sorted(DOWNLOAD_DIR.iterdir(), key=lambda p: p.stat().st_mtime), 1):
-                if f.is_file():
+                if f.is_file() and f.name != COOKIES_FILE.name:
                     prefix = "!" if prefix_exclamation else ""
-                    idx = f"{i}." if number_style == "numeric" else f"{_str.ascii_lowercase[i-1]}"
+                    if number_style == "numeric":
+                        idx = f"{i}."
+                    else:
+                        value = i
+                        letters = ""
+                        while value:
+                            value, remainder = divmod(value - 1, 26)
+                            letters = _str.ascii_lowercase[remainder] + letters
+                        idx = letters
                     new = DOWNLOAD_DIR / f"{prefix}{idx} {f.stem}{f.suffix}"
                     if new != f:
                         f.rename(new)
@@ -132,8 +133,8 @@ def download_task(task_id: str, url_list: list[str], mode: str, quality: str, au
         latest_task_id = task_id
 
         for f in DOWNLOAD_DIR.iterdir():
-            if f.is_file():
-                schedule_delete(f, CLEANUP_5MIN)
+            if f.is_file() and f.name != COOKIES_FILE.name:
+                schedule_delete(f, cleanup_seconds)
 
     except Exception as e:
         tasks[task_id] = {"status": "error", "mode": mode, "quality": quality, "message": str(e)}
@@ -145,9 +146,11 @@ async def start_download(
     mode: str = Form("audio"),
     quality: str = Form("best"),
     audio_format: str = Form("opus"),
+    embed_thumbnail: str = Form("true"),
     number_files: str = Form("false"),
     prefix_exclamation: str = Form("false"),
     number_style: str = Form("numeric"),
+    cleanup_seconds: str = Form("0"),
     background_tasks: BackgroundTasks = None,
 ):
     url_list = [u.strip() for u in urls.replace("\n", ",").split(",") if u.strip()]
@@ -155,12 +158,19 @@ async def start_download(
         raise HTTPException(status_code=400, detail="No URLs provided")
     if mode not in ("audio", "video"):
         raise HTTPException(status_code=400, detail="Mode must be 'audio' or 'video'")
-
-    clean_old_files()
+    allowed_audio_formats = {"m4a", "webm", "opus", "ogg", "mp3", "flac", "wav", "aac"}
+    if mode == "audio" and audio_format not in allowed_audio_formats:
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
+    try:
+        cleanup_delay = int(cleanup_seconds)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Cleanup time must be a number of seconds")
+    if cleanup_delay < 0:
+        raise HTTPException(status_code=400, detail="Cleanup time cannot be negative")
 
     task_id = str(uuid.uuid4())[:8]
     tasks[task_id] = {"status": "queued", "mode": mode, "quality": quality}
-    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format, number_files == "true", prefix_exclamation == "true", number_style)
+    background_tasks.add_task(download_task, task_id, url_list, mode, quality, audio_format, embed_thumbnail == "true", number_files == "true", prefix_exclamation == "true", number_style, cleanup_delay)
 
     return JSONResponse({
         "status": "queued",
@@ -188,8 +198,6 @@ def download_file(filename: str):
     file_path = DOWNLOAD_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-
-    schedule_delete(file_path, CLEANUP_30SEC)
 
     return FileResponse(
         path=file_path,
@@ -231,9 +239,6 @@ def download_all():
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
             zf.write(f, f.name)
-
-    for f in files:
-        schedule_delete(f, CLEANUP_30SEC)
 
     buf.seek(0)
     return Response(

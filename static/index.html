@@ -299,6 +299,11 @@
              <option value="m4a">m4a (AAC)</option>
              <option value="webm">webm (Opus)</option>
              <option value="opus">opus</option>
+               <option value="ogg">ogg (Opus)</option>
+               <option value="mp3">mp3</option>
+               <option value="flac">flac</option>
+               <option value="wav">wav</option>
+               <option value="aac">aac</option>
           </select>
         </div>
 
@@ -324,6 +329,13 @@
       <div style="display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-2)">
       <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
         <input type="checkbox" id="clearOnSubmit"> Clear old files on new download
+      </label>
+      <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
+        <input type="checkbox" id="embedThumbnail" checked> Add cover art when available
+      </label>
+      <label style="display:flex;align-items:center;gap:var(--space-2);font-weight:400">
+        <span>Delete files after seconds (0 = never):</span>
+        <input type="number" id="cleanupSeconds" min="0" step="1" value="0" style="max-width:120px">
       </label>
       <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;font-weight:400">
         <input type="checkbox" id="numberFiles"> Number files
@@ -352,6 +364,17 @@
     const HISTORY_KEY = 'ytdl_url_history';
     const MAX_HISTORY = 20;
     const STORAGE_THEME_KEY = 'ytdl_theme';
+    const STORAGE_SETTINGS_KEY = 'ytdl_settings';
+
+    function loadSettings() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_SETTINGS_KEY) || '{}'); } catch { return {}; }
+    }
+
+    function saveSetting(name, value) {
+      const settings = loadSettings();
+      settings[name] = value;
+      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(settings));
+    }
 
     function getHistory() {
       try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
@@ -414,10 +437,32 @@
     modeGroup.addEventListener('change', toggleOpts);
     toggleOpts();
 
+    const audioFormat = document.getElementById('audioFormat');
+    const quality = document.getElementById('quality');
+    const savedMode = settings.mode || 'audio';
+    const savedAudioFormat = settings.audioFormat || 'm4a';
+    const savedQuality = settings.quality || 'best';
+    const savedModeInput = modeGroup.querySelector(`input[value="${savedMode}"]`);
+    if (savedModeInput) savedModeInput.checked = true;
+    if ([...audioFormat.options].some(option => option.value === savedAudioFormat)) audioFormat.value = savedAudioFormat;
+    if ([...quality.options].some(option => option.value === savedQuality)) quality.value = savedQuality;
+    toggleOpts();
+    modeGroup.addEventListener('change', () => saveSetting('mode', document.querySelector('[name="mode"]:checked').value));
+    audioFormat.addEventListener('change', () => saveSetting('audioFormat', audioFormat.value));
+    quality.addEventListener('change', () => saveSetting('quality', quality.value));
+
     const clearOnSubmit = document.getElementById('clearOnSubmit');
     const savedClear = localStorage.getItem('ytdl_clearOnSubmit');
     if (savedClear === 'true') clearOnSubmit.checked = true;
     clearOnSubmit.addEventListener('change', () => localStorage.setItem('ytdl_clearOnSubmit', clearOnSubmit.checked));
+
+    const settings = loadSettings();
+    const embedThumbnail = document.getElementById('embedThumbnail');
+    const cleanupSeconds = document.getElementById('cleanupSeconds');
+    if (typeof settings.embedThumbnail === 'boolean') embedThumbnail.checked = settings.embedThumbnail;
+    if (settings.cleanupSeconds !== undefined) cleanupSeconds.value = settings.cleanupSeconds;
+    embedThumbnail.addEventListener('change', () => saveSetting('embedThumbnail', embedThumbnail.checked));
+    cleanupSeconds.addEventListener('change', () => saveSetting('cleanupSeconds', cleanupSeconds.value));
 
     const numberFiles = document.getElementById('numberFiles');
     const numOpts = document.getElementById('numOpts');
@@ -462,9 +507,11 @@
       fd.append('mode', document.querySelector('[name="mode"]:checked').value);
       fd.append('quality', document.getElementById('quality').value);
       fd.append('audio_format', document.getElementById('audioFormat').value);
+      fd.append('embed_thumbnail', embedThumbnail.checked);
       fd.append('number_files', numberFiles.checked);
       fd.append('prefix_exclamation', prefixExcl.checked);
       fd.append('number_style', numberStyle.value);
+      fd.append('cleanup_seconds', cleanupSeconds.value || '0');
 
       statusEl.style.display = 'block';
       statusEl.className = 'status';
@@ -491,7 +538,7 @@
     });
 
     async function pollTask(taskId) {
-      for (let i = 0; i < 300; i++) {
+      while (true) {
         await new Promise(r => setTimeout(r, 1000));
         try {
           const res = await fetch('/task/' + taskId);
@@ -506,7 +553,7 @@
             filesEl.innerHTML = '';
             break;
           } else {
-            statusEl.textContent = 'Downloading... ' + (i + 1) + 's';
+            statusEl.textContent = 'Downloading...';
             if (t.total && t.done != null) {
               statusEl.textContent += ' (' + t.done + '/' + t.total + ')';
             }

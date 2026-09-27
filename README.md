@@ -67,21 +67,22 @@ APP_PORT=8080 python run.py
 
 ## Features
 
-- **Audio mode** — best native Opus/AAC, no re-encode. Choose container: `.opus`, `.webm`, `.m4a`
+- **Audio mode** — choose `.m4a`, `.webm`, `.opus`, `.ogg`, `.mp3`, `.flac`, `.wav`, or `.aac`
 - **Video mode** — selectable quality (best/4K/1080p/720p/480p/360p)
 - **Batch** — multiple URLs or full playlists
 - **Background downloads** — non-blocking, status polling
 - **File management** — delete single files, clear all, download all as ZIP
 - **Dark/light theme**
 - **URL history** (localStorage)
-- **Auto-cleanup** — files deleted after 30s (on download) / 5min (auto)
+- **Configurable cleanup** — choose any number of seconds, or `0` to keep files until manually deleted
 
 ## Run on Android (Termux)
 
 ```bash
 pkg install python ffmpeg
-pip install fastapi uvicorn yt-dlp
-uvicorn main:app --host 0.0.0.0 --port 8000
+bash install-termux.sh
+source .venv/bin/activate
+python run.py
 ```
 
 Open `http://localhost:8000` in browser.
@@ -110,8 +111,6 @@ nohup python run.py &
 | `APP_PORT` | `8000` | Port |
 | `APP_RELOAD` | `false` | Auto-reload on file changes |
 | `DOWNLOAD_DIR` | `downloads` | Download directory |
-| `CLEANUP_5MIN` | `300` | Auto-delete after seconds |
-| `CLEANUP_30SEC` | `30` | Delete after download |
 | `WARP_PROXY` | `socks5://127.0.0.1:40000` | Warp SOCKS5 proxy |
 
 ## Notes

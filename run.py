@@ -17,10 +17,14 @@ def env_int(name: str, default: int) -> int:
 		return default
 
 
-if __name__ == "__main__":
+def main():
 	uvicorn.run(
 		"main:app",
 		host=os.getenv("APP_HOST", "0.0.0.0"),
 		port=env_int("APP_PORT", 8000),
-		reload=env_bool("APP_RELOAD", True),
+		reload=env_bool("APP_RELOAD", False),
 	)
+
+
+if __name__ == "__main__":
+	main()

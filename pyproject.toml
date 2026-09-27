@@ -4,9 +4,11 @@ version = "1.0.0"
 description = "YouTube Audio/Video Batch Downloader"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn[standard]>=0.27",
+    "fastapi==0.103.2",
+    "pydantic<2",
+    "uvicorn>=0.23,<0.30",
     "yt-dlp>=2024",
+    "python-multipart>=0.0.6",
 ]
 
 [project.scripts]
