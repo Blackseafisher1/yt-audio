@@ -32,6 +32,21 @@
 
     :root[data-theme='light'] { color-scheme: light; }
     :root[data-theme='dark'] { color-scheme: dark; }
+    :root[data-theme='dark+'] {
+      color-scheme: dark;
+      --color-bg: #000000;
+      --color-bg-surface: #050505;
+      --color-bg-hover: #141414;
+      --color-bg-active: #1f1f1f;
+      --color-text: #f5f5f5;
+      --color-text-muted: #a0a0a0;
+      --color-border: #292929;
+      --color-accent: #70b7ff;
+      --color-accent-hover: #9acbff;
+      --color-success: #57d978;
+      --color-error: #ff6b72;
+      --color-warning: #f0c75e;
+    }
 
     html { font-size: 100%; -webkit-text-size-adjust: 100%; }
 
@@ -413,16 +428,21 @@
 
     // Theme
     const themeToggle = document.getElementById('themeToggle');
+    const themeModes = ['light', 'dark', 'dark+'];
+    const themeLabels = { light: 'Light', dark: 'Dark', 'dark+': 'Dark+ OLED' };
     function setTheme(t) {
+      if (!themeModes.includes(t)) t = 'dark';
       document.documentElement.setAttribute('data-theme', t);
-      themeToggle.textContent = t === 'dark' ? 'Dark' : 'Light';
+      themeToggle.textContent = themeLabels[t];
+      themeToggle.setAttribute('aria-label', 'Theme: ' + themeLabels[t] + '. Click to change.');
       localStorage.setItem(STORAGE_THEME_KEY, t);
     }
     const saved = localStorage.getItem(STORAGE_THEME_KEY) || 'dark';
     setTheme(saved);
     themeToggle.addEventListener('click', () => {
       const cur = document.documentElement.getAttribute('data-theme');
-      setTheme(cur === 'dark' ? 'light' : 'dark');
+      const next = themeModes[(themeModes.indexOf(cur) + 1) % themeModes.length];
+      setTheme(next);
     });
 
     // Mode toggle
