@@ -449,6 +449,7 @@
     const modeGroup = document.getElementById('modeGroup');
     const audioFmtGroup = document.getElementById('audioFormatGroup');
     const videoQGroup = document.getElementById('videoQualityGroup');
+    const settings = loadSettings();
     function toggleOpts() {
       const video = modeGroup.querySelector('input[value=video]').checked;
       audioFmtGroup.hidden = video;
@@ -476,7 +477,6 @@
     if (savedClear === 'true') clearOnSubmit.checked = true;
     clearOnSubmit.addEventListener('change', () => localStorage.setItem('ytdl_clearOnSubmit', clearOnSubmit.checked));
 
-    const settings = loadSettings();
     const embedThumbnail = document.getElementById('embedThumbnail');
     const cleanupSeconds = document.getElementById('cleanupSeconds');
     if (typeof settings.embedThumbnail === 'boolean') embedThumbnail.checked = settings.embedThumbnail;
