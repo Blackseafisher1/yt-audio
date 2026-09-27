@@ -545,9 +545,9 @@
       try {
         const res = await fetch('/download/', { method: 'POST', body: fd });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail);
+        if (!res.ok) throw new Error(data.detail || 'Download could not be started');
         addHistory(urls);
-        statusEl.textContent = 'Task ' + data.task_id + ' — ' + data.message;
+        statusEl.textContent = 'Task ' + data.task_id + ' - ' + data.message;
         pollTask(data.task_id);
       } catch (err) {
         statusEl.className = 'status error';
@@ -562,26 +562,26 @@
         await new Promise(r => setTimeout(r, 1000));
         try {
           const res = await fetch('/task/' + taskId);
-          const t = await res.json();
-          if (t.status === 'done') {
+          const task = await res.json();
+          if (task.status === 'done') {
             statusEl.textContent = 'Done';
-            showFiles(t.files || []);
+            showFiles(task.files || []);
             break;
-          } else if (t.status === 'error') {
+          }
+          if (task.status === 'error') {
             statusEl.className = 'status error';
-            statusEl.textContent = 'Error: ' + t.message;
+            statusEl.textContent = 'Error: ' + task.message;
             filesEl.innerHTML = '';
             break;
-          } else {
-            statusEl.textContent = 'Downloading...';
-            if (t.total && t.done != null) {
-              statusEl.textContent += ' (' + t.done + '/' + t.total + ')';
-            }
+          }
+          statusEl.textContent = 'Downloading...';
+          if (task.total && task.done != null) {
+            statusEl.textContent += ' (' + task.done + '/' + task.total + ')';
           }
         } catch {}
       }
-      document.querySelector('.btn').disabled = false;
-      document.querySelector('.btn').textContent = 'Start Download';
+      btn.disabled = false;
+      btn.textContent = 'Start Download';
     }
 
     function showFiles(files) {
@@ -612,22 +612,6 @@
         showFiles(data.files || []);
       } catch {}
     }
-
-
-     const modeContainer = document.getElementById('modeGroup');
-     const qDropdown = document.querySelector('.quality-group');
-
-modeContainer.addEventListener('change', () => {
-  qDropdown.hidden = !modeContainer.querySelector('input[value=video]').checked;
-});
-
-
-
-
-
-        
-
-     
 
     loadLatestFiles();
   </script>
