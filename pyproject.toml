@@ -13,3 +13,6 @@ dependencies = [
 
 [project.scripts]
 yt-audio = "run:main"
+
+[tool.setuptools]
+py-modules = ["main", "run"]

@@ -1,5 +1,7 @@
 README.md
+main.py
 pyproject.toml
+run.py
 yt_audio.egg-info/PKG-INFO
 yt_audio.egg-info/SOURCES.txt
 yt_audio.egg-info/dependency_links.txt
